@@ -13,12 +13,12 @@ class WSJ():
             assert(trainX.shape[0] == 24590)
             
     """
-  
+
     def __init__(self):
         self.dev_set = None
         self.train_set = None
         self.test_set = None
-  
+        os.environ['WSJ_PATH'] = '../data/'
     @property
     def dev(self):
         if self.dev_set is None:
