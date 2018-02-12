@@ -6,44 +6,73 @@ import numpy as np
 import os
 
 class Data:
-    def __init__(self, data_folder_path=FLATTENED_DATA_FOLDER_PATH, batch_size=1000000, n_context=0):
-        self.batch_size = batch_size
-        self.n_context = n_context
-        self.path = data_folder_path
-        self.curr_batch_idx = 0
-    def load_train_batchwise(self):
-        TRAIN = 'train'
-        self.trainLookup = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, TRAIN + 'FLATTENED_Lookup.npy')).astype(int)
-        self.trainXmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, TRAIN + 'FLATTENED_X.npy'),mmap_mode="r")
-        self.trainYmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, TRAIN + 'FLATTENED_Y.npy'),mmap_mode="r")
+        def __init__(self, data_folder_path=FLATTENED_DATA_FOLDER_PATH, batch_size=1000000, num_context_frame=1):
+            self.batch_size = batch_size
+            self.path = data_folder_path
+            self.curr_batch_idx = 0
+            self.num_context_frame = num_context_frame 
+        def load_train_batchwise(self):
+            TRAIN = 'train'
+            self.trainLookup = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, TRAIN + 'FLATTENED_Lookup.npy')).astype(int)
+            self.trainXmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, TRAIN + 'FLATTENED_X.npy'),mmap_mode="r")
+            self.trainYmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, TRAIN + 'FLATTENED_Y.npy'),mmap_mode="r")
+            
+            self.total_num_batch = int(self.trainLookup.shape[0]/self.batch_size)+1
+            Lookup_indexes = np.array(range(self.trainLookup.shape[0]))
+            np.random.shuffle(Lookup_indexes)
+            
+            for curr_batch in range(self.total_num_batch):
+                print("***Current Batch:", curr_batch)
+                start_idx = curr_batch * self.batch_size
+                end_idx = start_idx + self.batch_size
+                
+                batch_indx = self.trainLookup[Lookup_indexes[start_idx: end_idx]]
+                batch_matrix = np.zeros((self.num_context_frame*2+1, batch_indx.shape[0]))
+                batch_matrix[self.num_context_frame] = batch_indx
+                for idx in range(self.num_context_frame):
+                    batch_matrix[self.num_context_frame - idx - 1] = batch_matrix[self.num_context_frame - idx ] -1
+                    batch_matrix[self.num_context_frame + idx + 1 ] = batch_matrix[self.num_context_frame + idx] +1
+                batch_matrix = batch_matrix.T 
+                
+                X, Y = self.trainXmem_map[batch_matrix.astype(int)], self.trainYmem_map[Lookup_indexes[start_idx: end_idx]]
+                yield np.array(X).reshape(X.shape[0], X.shape[1]*X.shape[2]), np.array(Y)
         
-        self.total_num_batch = int(self.trainLookup.shape[0]/self.batch_size)+1
-        Lookup_indexes = np.array(range(self.trainLookup.shape[0]))
-        np.random.shuffle(Lookup_indexes)
-        
-        for curr_batch in range(self.total_num_batch):
-            print("***Current Batch:", curr_batch)
-            start_idx = curr_batch * self.batch_size
-            end_idx = start_idx + self.batch_size
-            batch_indx = self.trainLookup[Lookup_indexes[start_idx: end_idx]]
-            X, Y = self.trainXmem_map[batch_indx], self.trainYmem_map[Lookup_indexes[start_idx: end_idx]]
-            yield np.array(X), np.array(Y)
-    def load_dev(self):
-        self.devLookup = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'dev' + 'FLATTENED_Lookup.npy')).astype(int)
-        self.devXmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'dev' + 'FLATTENED_X.npy'))
-        self.devYmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'dev' + 'FLATTENED_Y.npy'))
-        
-        return self.devXmem_map[self.devLookup], self.devYmem_map[:]
-    def load_test(self):
-        self.devLookup = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'test' + 'FLATTENED_Lookup.npy')).astype(int)
-        self.devXmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'test' + 'FLATTENED_X.npy'))
-        
-        return self.devXmem_map[self.devLookup]
+        def load_dev(self):
+            self.devLookup = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'dev' + 'FLATTENED_Lookup.npy')).astype(int)
+            self.devXmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'dev' + 'FLATTENED_X.npy'))
+            self.devYmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'dev' + 'FLATTENED_Y.npy'))
+            
+            batch_indx = self.devLookup
+            batch_matrix = np.zeros((self.num_context_frame*2+1, batch_indx.shape[0]))
+            batch_matrix[self.num_context_frame] = batch_indx
+            
+            for idx in range(self.num_context_frame):
+                batch_matrix[self.num_context_frame - idx - 1] = batch_matrix[self.num_context_frame - idx ] -1
+                batch_matrix[self.num_context_frame + idx + 1 ] = batch_matrix[self.num_context_frame + idx] +1
+            batch_matrix = batch_matrix.T 
+            
+            X, Y = self.devXmem_map[batch_matrix.astype(int)], self.devYmem_map[:]
+            return X.reshape(X.shape[0], X.shape[1]*X.shape[2]), Y
+        def load_test(self):
+            self.testLookup = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'test' + 'FLATTENED_Lookup.npy')).astype(int)
+            self.testXmem_map = np.load(os.path.join(FLATTENED_DATA_FOLDER_PATH, 'test' + 'FLATTENED_X.npy'))
+            
+            batch_indx = self.testLookup
+            batch_matrix = np.zeros((self.num_context_frame*2+1, batch_indx.shape[0]))
+            batch_matrix[self.num_context_frame] = batch_indx
+            
+            for idx in range(self.num_context_frame):
+                batch_matrix[self.num_context_frame - idx - 1] = batch_matrix[self.num_context_frame - idx ] -1
+                batch_matrix[self.num_context_frame + idx + 1 ] = batch_matrix[self.num_context_frame + idx] +1
+            batch_matrix = batch_matrix.T 
+            
+            X = self.testXmem_map[batch_matrix.astype(int)]
+            return X.reshape(X.shape[0], X.shape[1]*X.shape[2])
 
 
 # Parameters
 learning_rate = 0.001
-training_epochs = 1
+training_epochs = 10
 batch_size = 100000
 display_step = 1
 
